@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Play, Bug, BookOpen, Zap, Code, Loader2 } from 'lucide-react';
+import { Play, Bug, BookOpen, Mountain, Code, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useMonacoDecorations, ExplanationWithRange, CodeRange } from '@/hooks/useMonacoDecorations';
 import { parseSolidityFunctions, getExplanationForFunction } from '@/utils/solidityParser';
@@ -385,7 +385,7 @@ contract SimpleStorage {
       <div className="border-b border-gray-800 p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <Zap className="h-8 w-8 text-red-500" />
+            <Mountain className="h-8 w-8 text-red-500" />
             <div>
               <h1 className="text-xl font-bold">Avalanche Smart Contract IDE</h1>
               <p className="text-sm text-gray-400">AI-Powered Debugging & Simulation</p>
