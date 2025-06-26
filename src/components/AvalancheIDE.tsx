@@ -385,7 +385,7 @@ contract SimpleStorage {
       <div className="border-b border-gray-800 p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <img src="/public/icons/Avax_logo.png" alt="AVAX Icon" className="h-8 w-8" />
+            <img src="/icons/AVAX_logo.png" alt="AVAX Icon" className="h-8 w-8" />
             <div>
               <h1 className="text-xl font-bold">Avalanche Smart Contract IDE</h1>
               <p className="text-sm text-gray-400">AI-Powered Debugging & Simulation</p>
@@ -504,7 +504,7 @@ contract SimpleStorage {
             <TabsContent value="explanation" className="h-[calc(100%-40px)] p-0">
               <Card className="h-full bg-gray-900 border-gray-800">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm flex items-center justify-between">
+                  <CardTitle className="text-base font-bold flex items-center justify-between text-white">
                     <div className="flex items-center">
                       <BookOpen className="h-4 w-4 mr-2 text-blue-400" />
                       Synchronized Explanations
@@ -557,7 +557,7 @@ contract SimpleStorage {
             <TabsContent value="debug" className="h-[calc(100%-40px)] p-0">
               <Card className="h-full bg-gray-900 border-gray-800">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm flex items-center">
+                  <CardTitle className="text-base font-bold flex items-center text-white">
                     <Bug className="h-4 w-4 mr-2 text-yellow-400" />
                     Debug Suggestions
                   </CardTitle>
@@ -574,7 +574,7 @@ contract SimpleStorage {
             <TabsContent value="simulation" className="h-[calc(100%-40px)] p-0">
               <Card className="h-full bg-gray-900 border-gray-800">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm flex items-center">
+                  <CardTitle className="text-base font-bold flex items-center text-white">
                     <Play className="h-4 w-4 mr-2 text-red-400" />
                     Fuji Simulation
                     {selectedFunction && (
