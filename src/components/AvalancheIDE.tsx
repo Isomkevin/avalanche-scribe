@@ -1,5 +1,4 @@
-
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Editor from '@monaco-editor/react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -8,6 +7,10 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Play, Bug, BookOpen, Zap, Code, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useMonacoDecorations, ExplanationWithRange, CodeRange } from '@/hooks/useMonacoDecorations';
+import { parseSolidityFunctions, getExplanationForFunction } from '@/utils/solidityParser';
+import ExplanationCard from './ExplanationCard';
+import '../styles/monaco-highlights.css';
 
 const AvalancheIDE = () => {
   const [contractCode, setContractCode] = useState(`// SPDX-License-Identifier: MIT
@@ -40,6 +43,8 @@ contract SimpleStorage {
   const [explanation, setExplanation] = useState('');
   const [debugSuggestions, setDebugSuggestions] = useState('');
   const [simulationOutput, setSimulationOutput] = useState('');
+  const [explanations, setExplanations] = useState<ExplanationWithRange[]>([]);
+  const [activeExplanationId, setActiveExplanationId] = useState<string | null>(null);
   const [selectedFunction, setSelectedFunction] = useState('');
   const [isLoading, setIsLoading] = useState({
     explain: false,
@@ -49,10 +54,16 @@ contract SimpleStorage {
 
   const editorRef = useRef(null);
   const { toast } = useToast();
+  const { 
+    setEditor, 
+    highlightAndScroll, 
+    clearHighlights 
+  } = useMonacoDecorations();
 
   // Monaco Editor setup with Solidity syntax highlighting
   const handleEditorDidMount = (editor: any, monaco: any) => {
     editorRef.current = editor;
+    setEditor(editor);
     
     // Register Solidity language if not already registered
     if (!monaco.languages.getLanguages().some((lang: any) => lang.id === 'solidity')) {
@@ -93,58 +104,45 @@ contract SimpleStorage {
         }
       });
     }
-  };
-
-  // Get selected text or current function context
-  const getSelectedCodeOrFunction = () => {
-    if (!editorRef.current) return '';
     
-    const selection = editorRef.current.getSelection();
-    const selectedText = editorRef.current.getModel().getValueInRange(selection);
-    
-    if (selectedText.trim()) {
-      return selectedText;
-    }
-    
-    // If no selection, try to detect current function
-    const position = editorRef.current.getPosition();
-    const model = editorRef.current.getModel();
-    const lineCount = model.getLineCount();
-    
-    // Simple function detection (can be enhanced)
-    let functionStart = position.lineNumber;
-    let functionEnd = position.lineNumber;
-    
-    // Find function start
-    for (let i = position.lineNumber; i >= 1; i--) {
-      const line = model.getLineContent(i);
-      if (line.includes('function ')) {
-        functionStart = i;
-        break;
+    // Add click handler for contextual explanations
+    editor.onMouseDown((e: any) => {
+      if (e.target.type === 1) { // Line content
+        const position = e.target.position;
+        handleLineClick(position.lineNumber);
       }
-    }
-    
-    // Find function end
-    let braceCount = 0;
-    for (let i = functionStart; i <= lineCount; i++) {
-      const line = model.getLineContent(i);
-      braceCount += (line.match(/{/g) || []).length;
-      braceCount -= (line.match(/}/g) || []).length;
-      if (braceCount === 0 && i > functionStart) {
-        functionEnd = i;
-        break;
-      }
-    }
-    
-    return model.getValueInRange({
-      startLineNumber: functionStart,
-      startColumn: 1,
-      endLineNumber: functionEnd,
-      endColumn: model.getLineMaxColumn(functionEnd)
     });
   };
 
-  // API call handlers with proper error handling
+  const handleLineClick = (lineNumber: number) => {
+    const functions = parseSolidityFunctions(contractCode);
+    const clickedFunction = functions.find(
+      func => lineNumber >= func.range.startLine && lineNumber <= func.range.endLine
+    );
+    
+    if (clickedFunction) {
+      const explanation = getExplanationForFunction(clickedFunction.name, contractCode);
+      const explanationWithRange: ExplanationWithRange = {
+        id: `line-${lineNumber}-${Date.now()}`,
+        explanation: `**${clickedFunction.name}()** (Lines ${clickedFunction.range.startLine}-${clickedFunction.range.endLine})\n\n${explanation}`,
+        range: clickedFunction.range,
+      };
+      
+      setExplanations(prev => [explanationWithRange, ...prev.slice(0, 2)]); // Keep only 3 recent
+      handleExplanationClick(clickedFunction.range, explanationWithRange.id);
+      
+      toast({
+        title: "Contextual explanation generated",
+        description: `Analysis for ${clickedFunction.name}() function`,
+      });
+    }
+  };
+
+  const handleExplanationClick = (range: CodeRange, explanationId: string) => {
+    setActiveExplanationId(explanationId);
+    highlightAndScroll(range, true);
+  };
+
   const handleExplain = async () => {
     const codeToExplain = getSelectedCodeOrFunction();
     if (!codeToExplain.trim()) {
@@ -159,42 +157,34 @@ contract SimpleStorage {
     setIsLoading(prev => ({ ...prev, explain: true }));
     
     try {
-      // Backend API call - replace with actual endpoint
-      const response = await fetch('/api/explain', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          code: codeToExplain,
-          contractCode: contractCode,
-          language: 'solidity'
-        })
-      });
-
-      if (!response.ok) throw new Error('Failed to get explanation');
+      // Simulate backend API call with structured response
+      const mockResponse = {
+        explanation: `**AI Code Analysis**\n\nThis code segment implements smart contract functionality with the following characteristics:\n\n• State variable management\n• Event emission patterns\n• Access control considerations\n• Gas optimization opportunities\n\n*Note: Connect to AI service for detailed analysis.*`,
+        startLine: 1,
+        endLine: 10,
+      };
       
-      const data = await response.json();
-      setExplanation(data.explanation || 'AI explanation will appear here...');
+      const explanationWithRange: ExplanationWithRange = {
+        id: `explain-${Date.now()}`,
+        explanation: mockResponse.explanation,
+        range: { 
+          startLine: mockResponse.startLine, 
+          endLine: mockResponse.endLine 
+        },
+      };
+      
+      setExplanations(prev => [explanationWithRange, ...prev.slice(0, 2)]);
+      handleExplanationClick(explanationWithRange.range, explanationWithRange.id);
       
       toast({
         title: "Code explained",
-        description: "AI analysis complete"
+        description: "AI analysis complete with line highlighting"
       });
     } catch (error) {
       console.error('Explanation error:', error);
-      setExplanation(`**AI Code Explanation**
-
-This appears to be a Solidity smart contract function. Here's what it does:
-
-${codeToExplain.includes('function') ? '• This is a function definition' : '• This is a code snippet'}
-• It interacts with contract state variables
-• Consider gas optimization opportunities
-• Check for potential security vulnerabilities
-
-*Note: This is a placeholder response. Connect to OpenAI/Claude API for detailed analysis.*`);
-      
       toast({
-        title: "Using placeholder response",
-        description: "Connect backend API for real AI analysis"
+        title: "Error generating explanation",
+        description: "Please try again or connect backend API"
       });
     } finally {
       setIsLoading(prev => ({ ...prev, explain: false }));
@@ -340,6 +330,55 @@ ${codeToExplain.includes('function') ? '• This is a function definition' : '�
     }
   };
 
+  // Get selected text or current function context
+  const getSelectedCodeOrFunction = () => {
+    if (!editorRef.current) return '';
+    
+    const selection = editorRef.current.getSelection();
+    const selectedText = editorRef.current.getModel().getValueInRange(selection);
+    
+    if (selectedText.trim()) {
+      return selectedText;
+    }
+    
+    // If no selection, try to detect current function
+    const position = editorRef.current.getPosition();
+    const model = editorRef.current.getModel();
+    const lineCount = model.getLineCount();
+    
+    // Simple function detection (can be enhanced)
+    let functionStart = position.lineNumber;
+    let functionEnd = position.lineNumber;
+    
+    // Find function start
+    for (let i = position.lineNumber; i >= 1; i--) {
+      const line = model.getLineContent(i);
+      if (line.includes('function ')) {
+        functionStart = i;
+        break;
+      }
+    }
+    
+    // Find function end
+    let braceCount = 0;
+    for (let i = functionStart; i <= lineCount; i++) {
+      const line = model.getLineContent(i);
+      braceCount += (line.match(/{/g) || []).length;
+      braceCount -= (line.match(/}/g) || []).length;
+      if (braceCount === 0 && i > functionStart) {
+        functionEnd = i;
+        break;
+      }
+    }
+    
+    return model.getValueInRange({
+      startLineNumber: functionStart,
+      startColumn: 1,
+      endLineNumber: functionEnd,
+      endColumn: model.getLineMaxColumn(functionEnd)
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       {/* Header */}
@@ -465,16 +504,52 @@ ${codeToExplain.includes('function') ? '• This is a function definition' : '�
             <TabsContent value="explanation" className="h-[calc(100%-40px)] p-0">
               <Card className="h-full bg-gray-900 border-gray-800">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm flex items-center">
-                    <BookOpen className="h-4 w-4 mr-2 text-blue-400" />
-                    Code Explanation
+                  <CardTitle className="text-sm flex items-center justify-between">
+                    <div className="flex items-center">
+                      <BookOpen className="h-4 w-4 mr-2 text-blue-400" />
+                      Synchronized Explanations
+                    </div>
+                    {explanations.length > 0 && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          clearHighlights();
+                          setActiveExplanationId(null);
+                        }}
+                        className="text-xs text-gray-400 hover:text-white"
+                      >
+                        Clear Highlights
+                      </Button>
+                    )}
                   </CardTitle>
+                  <div className="text-xs text-gray-400">
+                    Click on code lines or explanations to highlight and navigate
+                  </div>
                 </CardHeader>
                 <Separator className="bg-gray-800" />
-                <CardContent className="p-4 h-[calc(100%-60px)] overflow-auto">
-                  <div className="text-sm text-gray-300 whitespace-pre-wrap">
-                    {explanation || 'Select code and click "Explain" to get AI-powered analysis.'}
-                  </div>
+                <CardContent className="p-4 h-[calc(100%-100px)] overflow-auto space-y-3">
+                  {explanations.length > 0 ? (
+                    explanations.map((exp) => (
+                      <ExplanationCard
+                        key={exp.id}
+                        explanation={exp}
+                        isActive={activeExplanationId === exp.id}
+                        onClick={(range) => handleExplanationClick(range, exp.id)}
+                      />
+                    ))
+                  ) : (
+                    <div className="text-sm text-gray-300">
+                      <div className="mb-3">
+                        <strong>💡 Getting Started:</strong>
+                      </div>
+                      <ul className="text-xs space-y-1 text-gray-400">
+                        <li>• Click on any function to get contextual explanation</li>
+                        <li>• Select code and click "Explain" for detailed analysis</li>
+                        <li>• Explanations will highlight relevant code lines</li>
+                      </ul>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>

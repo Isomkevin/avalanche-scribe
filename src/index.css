@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -100,4 +101,49 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Monaco Editor Highlight Styles */
+.monaco-highlight-default {
+  background-color: rgba(254, 240, 138, 0.2) !important;
+  border-left: 4px solid rgb(251, 191, 36) !important;
+  animation: highlight-fade-in 0.3s ease-in-out;
+}
+
+.monaco-highlight-active {
+  background-color: rgba(254, 240, 138, 0.4) !important;
+  border-left: 4px solid rgb(245, 158, 11) !important;
+  animation: highlight-pulse 0.5s ease-in-out;
+}
+
+.monaco-highlight-gutter {
+  background-color: rgb(251, 191, 36) !important;
+  width: 4px !important;
+}
+
+@keyframes highlight-fade-in {
+  from {
+    background-color: rgba(254, 240, 138, 0) !important;
+  }
+  to {
+    background-color: rgba(254, 240, 138, 0.2) !important;
+  }
+}
+
+@keyframes highlight-pulse {
+  0% {
+    background-color: rgba(254, 240, 138, 0.2) !important;
+  }
+  50% {
+    background-color: rgba(254, 240, 138, 0.6) !important;
+  }
+  100% {
+    background-color: rgba(254, 240, 138, 0.4) !important;
+  }
+}
+
+/* Smooth transitions for all highlights */
+.monaco-highlight-default,
+.monaco-highlight-active {
+  transition: all 0.2s ease-in-out;
 }
