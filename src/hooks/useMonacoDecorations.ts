@@ -1,6 +1,5 @@
 
 import { useRef, useCallback } from 'react';
-import type { editor } from 'monaco-editor';
 
 export interface CodeRange {
   startLine: number;
@@ -13,11 +12,17 @@ export interface ExplanationWithRange {
   id: string;
 }
 
+// Define the Monaco Editor interface we need
+interface MonacoEditor {
+  deltaDecorations: (oldDecorations: string[], newDecorations: any[]) => string[];
+  revealLineInCenter: (lineNumber: number) => void;
+}
+
 export const useMonacoDecorations = () => {
   const decorationIdsRef = useRef<string[]>([]);
-  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  const editorRef = useRef<MonacoEditor | null>(null);
 
-  const setEditor = useCallback((editorInstance: editor.IStandaloneCodeEditor) => {
+  const setEditor = useCallback((editorInstance: MonacoEditor) => {
     editorRef.current = editorInstance;
   }, []);
 
