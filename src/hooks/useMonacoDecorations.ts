@@ -1,6 +1,6 @@
 
 import { useRef, useCallback } from 'react';
-import { editor } from 'monaco-editor';
+import type { editor } from 'monaco-editor';
 
 export interface CodeRange {
   startLine: number;
