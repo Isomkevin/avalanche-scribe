@@ -54,21 +54,21 @@ contract SimpleStorage {
 
   const editorRef = useRef(null);
   const { toast } = useToast();
-  const { 
-    setEditor, 
-    highlightAndScroll, 
-    clearHighlights 
+  const {
+    setEditor,
+    highlightAndScroll,
+    clearHighlights
   } = useMonacoDecorations();
 
   // Monaco Editor setup with Solidity syntax highlighting
   const handleEditorDidMount = (editor: any, monaco: any) => {
     editorRef.current = editor;
     setEditor(editor);
-    
+
     // Register Solidity language if not already registered
     if (!monaco.languages.getLanguages().some((lang: any) => lang.id === 'solidity')) {
       monaco.languages.register({ id: 'solidity' });
-      
+
       // Basic Solidity syntax highlighting
       monaco.languages.setMonarchTokensProvider('solidity', {
         keywords: [
@@ -104,7 +104,7 @@ contract SimpleStorage {
         }
       });
     }
-    
+
     // Add click handler for contextual explanations
     editor.onMouseDown((e: any) => {
       if (e.target.type === 1) { // Line content
@@ -119,7 +119,7 @@ contract SimpleStorage {
     const clickedFunction = functions.find(
       func => lineNumber >= func.range.startLine && lineNumber <= func.range.endLine
     );
-    
+
     if (clickedFunction) {
       const explanation = getExplanationForFunction(clickedFunction.name, contractCode);
       const explanationWithRange: ExplanationWithRange = {
@@ -127,10 +127,10 @@ contract SimpleStorage {
         explanation: `**${clickedFunction.name}()** (Lines ${clickedFunction.range.startLine}-${clickedFunction.range.endLine})\n\n${explanation}`,
         range: clickedFunction.range,
       };
-      
+
       setExplanations(prev => [explanationWithRange, ...prev.slice(0, 2)]); // Keep only 3 recent
       handleExplanationClick(clickedFunction.range, explanationWithRange.id);
-      
+
       toast({
         title: "Contextual explanation generated",
         description: `Analysis for ${clickedFunction.name}() function`,
@@ -155,7 +155,7 @@ contract SimpleStorage {
     }
 
     setIsLoading(prev => ({ ...prev, explain: true }));
-    
+
     try {
       // Simulate backend API call with structured response
       const mockResponse = {
@@ -163,19 +163,19 @@ contract SimpleStorage {
         startLine: 1,
         endLine: 10,
       };
-      
+
       const explanationWithRange: ExplanationWithRange = {
         id: `explain-${Date.now()}`,
         explanation: mockResponse.explanation,
-        range: { 
-          startLine: mockResponse.startLine, 
-          endLine: mockResponse.endLine 
+        range: {
+          startLine: mockResponse.startLine,
+          endLine: mockResponse.endLine
         },
       };
-      
+
       setExplanations(prev => [explanationWithRange, ...prev.slice(0, 2)]);
       handleExplanationClick(explanationWithRange.range, explanationWithRange.id);
-      
+
       toast({
         title: "Code explained",
         description: "AI analysis complete with line highlighting"
@@ -203,7 +203,7 @@ contract SimpleStorage {
     }
 
     setIsLoading(prev => ({ ...prev, debug: true }));
-    
+
     try {
       // Backend API call - replace with actual endpoint
       const response = await fetch('/api/debug', {
@@ -217,10 +217,10 @@ contract SimpleStorage {
       });
 
       if (!response.ok) throw new Error('Failed to get debug suggestions');
-      
+
       const data = await response.json();
       setDebugSuggestions(data.suggestions || 'Debug suggestions will appear here...');
-      
+
       toast({
         title: "Debug analysis complete",
         description: "AI suggestions generated"
@@ -247,7 +247,7 @@ contract SimpleStorage {
 • Review gas pricing on Fuji testnet
 
 *Note: This is a placeholder response. Connect to OpenZeppelin Defender API for detailed analysis.*`);
-      
+
       toast({
         title: "Using placeholder response",
         description: "Connect backend API for real debug analysis"
@@ -274,7 +274,7 @@ contract SimpleStorage {
     setSelectedFunction(functionName);
 
     setIsLoading(prev => ({ ...prev, simulate: true }));
-    
+
     try {
       // Backend API call for Avalanche Fuji simulation
       const response = await fetch('/api/simulate', {
@@ -289,10 +289,10 @@ contract SimpleStorage {
       });
 
       if (!response.ok) throw new Error('Failed to simulate on Fuji');
-      
+
       const data = await response.json();
       setSimulationOutput(data.output || 'Simulation results will appear here...');
-      
+
       toast({
         title: "Simulation complete",
         description: `Function ${functionName} executed on Fuji testnet`
@@ -320,7 +320,7 @@ contract SimpleStorage {
 • Block Number: #8,523,891 (simulated)
 
 *Note: This is a placeholder response. Connect to Avalanche RPC for real simulation.*`);
-      
+
       toast({
         title: "Using placeholder simulation",
         description: "Connect Avalanche RPC for real testnet interaction"
@@ -333,23 +333,23 @@ contract SimpleStorage {
   // Get selected text or current function context
   const getSelectedCodeOrFunction = () => {
     if (!editorRef.current) return '';
-    
+
     const selection = editorRef.current.getSelection();
     const selectedText = editorRef.current.getModel().getValueInRange(selection);
-    
+
     if (selectedText.trim()) {
       return selectedText;
     }
-    
+
     // If no selection, try to detect current function
     const position = editorRef.current.getPosition();
     const model = editorRef.current.getModel();
     const lineCount = model.getLineCount();
-    
+
     // Simple function detection (can be enhanced)
     let functionStart = position.lineNumber;
     let functionEnd = position.lineNumber;
-    
+
     // Find function start
     for (let i = position.lineNumber; i >= 1; i--) {
       const line = model.getLineContent(i);
@@ -358,7 +358,7 @@ contract SimpleStorage {
         break;
       }
     }
-    
+
     // Find function end
     let braceCount = 0;
     for (let i = functionStart; i <= lineCount; i++) {
@@ -370,7 +370,7 @@ contract SimpleStorage {
         break;
       }
     }
-    
+
     return model.getValueInRange({
       startLineNumber: functionStart,
       startColumn: 1,
@@ -385,7 +385,7 @@ contract SimpleStorage {
       <div className="border-b border-gray-800 p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <Mountain className="h-8 w-8 text-red-500" />
+            <img src="/public/icons/Avax_logo.png" alt="AVAX Icon" className="h-8 w-8" />
             <div>
               <h1 className="text-xl font-bold">Avalanche Smart Contract IDE</h1>
               <p className="text-sm text-gray-400">AI-Powered Debugging & Simulation</p>
@@ -457,7 +457,7 @@ contract SimpleStorage {
               </div>
             </div>
           </div>
-          
+
           <div className="h-[calc(100%-60px)]">
             <Editor
               height="100%"
