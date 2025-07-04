@@ -1,73 +1,71 @@
-# Avalanche Scribe: AI-Powered Avalanche Smart Contract IDE
+# Avalanche Scribe
 
-## Project info
+Avalanche Scribe is a web-based IDE for writing, compiling, and deploying Solidity smart contracts on the Avalanche blockchain. It provides a rich-editing experience powered by the Monaco editor, along with tools for interacting with your contracts and debugging them with the help of AI.
 
-**URL**: https://lovable.dev/projects/ae72a391-2bc2-493d-a3ed-d0a767a07e81
+## Features
 
-## How can I edit this code?
+- **Solidity IDE**: A full-featured code editor for Solidity with syntax highlighting, and autocompletion.
+- **Contract Compilation**: Compile your Solidity code and view the ABI and bytecode.
+- **Contract Deployment**: Deploy your smart contracts to the Avalanche C-Chain.
+- **Contract Interaction**: Interact with the functions of your deployed smart contracts.
+- **AI-Powered Debugging**: Get help from AI to debug your smart contracts.
+- **OpenZeppelin Defender Integration**: Monitor and manage your contracts with OpenZeppelin Defender.
 
-There are several ways to edit and contribute to Avalanche Scribe.
+## Getting Started
 
-**Use Lovable**
+### Prerequisites
 
-Visit the [Lovable Project](https://lovable.dev/projects/ae72a391-2bc2-493d-a3ed-d0a767a07e81) and start prompting.  
-Changes made via Lovable will be committed automatically to this repo.
+- [Node.js](https://nodejs.org/) (v18 or later)
+- [Bun](https://bun.sh/)
 
-**Use your preferred IDE**
+### Installation
 
-You can work locally using your own IDE. Clone this repo and push changes—your updates will be reflected in Lovable.
+1. **Clone the repository:**
 
-**Requirements:**  
-- Node.js & npm ([install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating))
+   ```bash
+   git clone https://github.com/your-username/avalanche-scribe.git
+   cd avalanche-scribe
+   ```
 
-**Quickstart:**
+2. **Install dependencies:**
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+   ```bash
+   bun install
+   ```
 
-# Step 2: Navigate to the project directory.
-cd avalanche-scribe
+3. **Set up environment variables:**
 
-# Step 3: Install the necessary dependencies.
-npm i
+   Create a `.env` file in the root of the project and add the following environment variables:
 
-# Step 4: Start the development server with auto-reloading and instant preview.
-npm run dev
+   ```
+   VITE_OPENAI_API_KEY=your-openai-api-key
+   VITE_OPENZEPPELIN_API_KEY=your-openzeppelin-api-key
+   VITE_OPENZEPPELIN_API_SECRET=your-openzeppelin-api-secret
+   ```
+
+### Running the Application
+
+```bash
+bun run dev
 ```
 
-**Edit a file directly in GitHub**
+This will start the development server and open the application in your browser at `http://localhost:5173`.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Usage
 
-**Use GitHub Codespaces**
+1. **Write your Solidity code** in the editor.
+2. **Compile your code** by clicking the "Compile" button.
+3. **Deploy your contract** by clicking the "Deploy" button.
+4. **Interact with your contract** using the provided UI.
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## Project Structure
 
-## What technologies are used for this project?
+The project is a monorepo with the following structure:
 
-This project is built with:
+- `ai-debugger-backend-1/`: The backend service for AI-powered debugging.
+- `src/`: The frontend React application.
+- `public/`: Static assets for the frontend.
 
-- Vite
-- TypeScript
-- React
-- shadcn/ui
-- Tailwind CSS
-- Monaco Editor
+## Contributing
 
-## How can I deploy this project?
-
-Open [Lovable](https://lovable.dev/projects/ae72a391-2bc2-493d-a3ed-d0a767a07e81) and click on Share → Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes!  
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+Contributions are welcome! Please open an issue or submit a pull request.
