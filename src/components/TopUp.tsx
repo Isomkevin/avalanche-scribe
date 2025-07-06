@@ -1,54 +1,180 @@
-import { useState } from 'react';
-import { useWeb3React } from '@web3-react/core';
-import { ethers } from 'ethers';
+// components/TopUp.tsx
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-
-const AI_CREDITS_ADDRESS = '0x5FbDB2315678afecb367f032d93F642f64180aa3'; // Replace with your deployed contract address
-const AI_CREDITS_ABI = [{"inputs":[{"internalType":"uint256","name":"_exchangeRate","type":"uint256"}],"stateMutability":"nonpayable","type":"constructor"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":false,"internalType":"uint256","name":"creditsSpent","type":"uint256"}],"name":"CreditsDeducted","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":false,"internalType":"uint256","name":"avaxAmount","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"creditsMinted","type":"uint256"}],"name":"TopUp","type":"event"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"creditBalances","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"exchangeRate","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"owner","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"_newRate","type":"uint256"}],"name":"setExchangeRate","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"user","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"spendCredits","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"topUp","outputs":[],"stateMutability":"payable","type":"function"},{"inputs":[],"name":"withdraw","outputs":[],"stateMutability":"nonpayable","type":"function"}];
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
+import { 
+  Wallet, 
+  Plus, 
+  ExternalLink, 
+  Copy, 
+  CheckCircle,
+  AlertCircle 
+} from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 export const TopUp = () => {
-  const { account, library } = useWeb3React();
   const [amount, setAmount] = useState('');
-  const [balance, setBalance] = useState('0');
+  const [isLoading, setIsLoading] = useState(false);
+  const { toast } = useToast();
 
-  const getBalance = async () => {
-    if (account && library) {
-      const contract = new ethers.Contract(AI_CREDITS_ADDRESS, AI_CREDITS_ABI, library);
-      const userBalance = await contract.creditBalances(account);
-      setBalance(userBalance.toString());
+  const fujiAddress = '0x1234567890abcdef1234567890abcdef12345678';
+  const currentBalance = '0.125';
+
+  const handleTopUp = async () => {
+    if (!amount || parseFloat(amount) <= 0) {
+      toast({
+        title: "Invalid amount",
+        description: "Please enter a valid amount",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    
+    try {
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      toast({
+        title: "Top-up initiated",
+        description: `Requesting ${amount} AVAX from Fuji faucet`,
+      });
+      
+      setAmount('');
+    } catch (error) {
+      toast({
+        title: "Top-up failed",
+        description: "Please try again later",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const topUp = async () => {
-    if (account && library && amount) {
-      const signer = library.getSigner();
-      const contract = new ethers.Contract(AI_CREDITS_ADDRESS, AI_CREDITS_ABI, signer);
-      const tx = await contract.topUp({ value: ethers.utils.parseEther(amount) });
-      await tx.wait();
-      getBalance();
-    }
+  const copyAddress = () => {
+    navigator.clipboard.writeText(fujiAddress);
+    toast({
+      title: "Address copied",
+      description: "Fuji testnet address copied to clipboard",
+    });
+  };
+
+  const openFaucet = () => {
+    window.open('https://faucet.avax.network/', '_blank');
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>AI Credits</CardTitle>
+    <Card className="h-full bg-gray-900 border-gray-800">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base font-bold flex items-center text-white">
+          <Wallet className="h-4 w-4 mr-2 text-green-400" />
+          Fuji Testnet Top-up
+        </CardTitle>
       </CardHeader>
-      <CardContent>
-        <p className="mb-2">Your balance: {balance} credits</p>
-        <div className="flex w-full max-w-sm items-center space-x-2">
+      <Separator className="bg-gray-800" />
+      <CardContent className="p-4 space-y-4">
+        
+        {/* Balance Display */}
+        <div className="bg-gray-800 rounded-lg p-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-400">Current Balance</span>
+            <Badge variant="outline" className="text-green-400 border-green-400/50">
+              {currentBalance} AVAX
+            </Badge>
+          </div>
+        </div>
+
+        {/* Wallet Address */}
+        <div className="space-y-2">
+          <Label className="text-sm text-gray-300">Fuji Testnet Address</Label>
+          <div className="flex items-center space-x-2">
+            <Input
+              value={fujiAddress}
+              readOnly
+              className="bg-gray-800 border-gray-700 text-xs font-mono"
+            />
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={copyAddress}
+              className="text-gray-400 hover:text-white"
+            >
+              <Copy className="h-3 w-3" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Amount Input */}
+        <div className="space-y-2">
+          <Label className="text-sm text-gray-300">Amount (AVAX)</Label>
           <Input
-            type="text"
-            placeholder="AVAX Amount"
+            type="number"
+            placeholder="Enter amount (e.g., 1.0)"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            className="w-1/2"
+            className="bg-gray-800 border-gray-700"
+            min="0"
+            step="0.1"
           />
-          <Button onClick={topUp} className="w-1/2">Top Up</Button>
         </div>
-        <Button onClick={getBalance} variant="outline" size="sm" className="mt-2 w-full">Refresh Balance</Button>
+
+        {/* Top-up Button */}
+        <Button
+          onClick={handleTopUp}
+          disabled={isLoading || !amount}
+          className="w-full bg-green-600 hover:bg-green-700"
+        >
+          {isLoading ? (
+            <>
+              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-2" />
+              Requesting...
+            </>
+          ) : (
+            <>
+              <Plus className="h-3 w-3 mr-2" />
+              Request from Faucet
+            </>
+          )}
+        </Button>
+
+        <Separator className="bg-gray-800" />
+
+        {/* Manual Faucet Link */}
+        <div className="space-y-2">
+          <div className="flex items-center space-x-2 text-sm text-gray-400">
+            <AlertCircle className="h-3 w-3" />
+            <span>Need more AVAX?</span>
+          </div>
+          <Button
+            variant="outline"
+            onClick={openFaucet}
+            className="w-full text-xs border-gray-700 hover:bg-gray-800"
+          >
+            <ExternalLink className="h-3 w-3 mr-2" />
+            Open Avalanche Faucet
+          </Button>
+        </div>
+
+        {/* Info */}
+        <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">
+          <div className="flex items-start space-x-2">
+            <CheckCircle className="h-4 w-4 text-blue-400 mt-0.5" />
+            <div className="text-xs text-blue-300">
+              <p className="font-medium mb-1">Fuji Testnet Info</p>
+              <p className="text-blue-400">
+                Free testnet AVAX for development and testing. 
+                Rate limited to prevent abuse.
+              </p>
+            </div>
+          </div>
+        </div>
+
       </CardContent>
     </Card>
   );
