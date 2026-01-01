@@ -1,6 +1,4 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ConnectWallet } from '@/components/ConnectWallet';
-import { TopUp } from '@/components/TopUp-3';
 import Editor from '@monaco-editor/react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -9,26 +7,13 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Play, Bug, BookOpen, Mountain, Code, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-
-// Simple placeholder components if the imports don't work
-const FallbackConnectWallet = () => (
-  <Button variant="outline" className="flex items-center space-x-2">
-    <span>Connect Wallet</span>
-  </Button>
-);
-
-const FallbackTopUp = () => (
-  <Card className="h-full bg-gray-900 border-gray-800">
-    <CardContent className="p-4">
-      <div className="text-center text-gray-400">
-        <p>Top-up component placeholder</p>
-      </div>
-    </CardContent>
-  </Card>
-);
+import { useMonacoDecorations, ExplanationWithRange, CodeRange } from '@/hooks/useMonacoDecorations';
+import { parseSolidityFunctions, getExplanationForFunction } from '@/utils/solidityParser';
+import ExplanationCard from './ExplanationCard';
+import '../styles/monaco-highlights.css';
 
 const AvalancheIDE = () => {
-  const DUMMY_CONTRACT_CODE = `// SPDX-License-Identifier: MIT
+  const [contractCode, setContractCode] = useState(`// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
 contract SimpleStorage {
@@ -53,13 +38,13 @@ contract SimpleStorage {
         storedData += 1;
         emit DataStored(storedData);
     }
-}`;
-  
-  const [contractCode, setContractCode] = useState(DUMMY_CONTRACT_CODE);
+}`);
+
+  const [explanation, setExplanation] = useState('');
   const [debugSuggestions, setDebugSuggestions] = useState('');
   const [simulationOutput, setSimulationOutput] = useState('');
-  const [explanations, setExplanations] = useState([]);
-  const [activeExplanationId, setActiveExplanationId] = useState(null);
+  const [explanations, setExplanations] = useState<ExplanationWithRange[]>([]);
+  const [activeExplanationId, setActiveExplanationId] = useState<string | null>(null);
   const [selectedFunction, setSelectedFunction] = useState('');
   const [isLoading, setIsLoading] = useState({
     explain: false,
@@ -69,13 +54,19 @@ contract SimpleStorage {
 
   const editorRef = useRef(null);
   const { toast } = useToast();
+  const {
+    setEditor,
+    highlightAndScroll,
+    clearHighlights
+  } = useMonacoDecorations();
 
   // Monaco Editor setup with Solidity syntax highlighting
-  const handleEditorDidMount = (editor, monaco) => {
+  const handleEditorDidMount = (editor: any, monaco: any) => {
     editorRef.current = editor;
+    setEditor(editor);
 
     // Register Solidity language if not already registered
-    if (!monaco.languages.getLanguages().some((lang) => lang.id === 'solidity')) {
+    if (!monaco.languages.getLanguages().some((lang: any) => lang.id === 'solidity')) {
       monaco.languages.register({ id: 'solidity' });
 
       // Basic Solidity syntax highlighting
@@ -113,6 +104,43 @@ contract SimpleStorage {
         }
       });
     }
+
+    // Add click handler for contextual explanations
+    editor.onMouseDown((e: any) => {
+      if (e.target.type === 1) { // Line content
+        const position = e.target.position;
+        handleLineClick(position.lineNumber);
+      }
+    });
+  };
+
+  const handleLineClick = (lineNumber: number) => {
+    const functions = parseSolidityFunctions(contractCode);
+    const clickedFunction = functions.find(
+      func => lineNumber >= func.range.startLine && lineNumber <= func.range.endLine
+    );
+
+    if (clickedFunction) {
+      const explanation = getExplanationForFunction(clickedFunction.name, contractCode);
+      const explanationWithRange: ExplanationWithRange = {
+        id: `line-${lineNumber}-${Date.now()}`,
+        explanation: `**${clickedFunction.name}()** (Lines ${clickedFunction.range.startLine}-${clickedFunction.range.endLine})\n\n${explanation}`,
+        range: clickedFunction.range,
+      };
+
+      setExplanations(prev => [explanationWithRange, ...prev.slice(0, 2)]); // Keep only 3 recent
+      handleExplanationClick(clickedFunction.range, explanationWithRange.id);
+
+      toast({
+        title: "Contextual explanation generated",
+        description: `Analysis for ${clickedFunction.name}() function`,
+      });
+    }
+  };
+
+  const handleExplanationClick = (range: CodeRange, explanationId: string) => {
+    setActiveExplanationId(explanationId);
+    highlightAndScroll(range, true);
   };
 
   const handleExplain = async () => {
@@ -129,25 +157,34 @@ contract SimpleStorage {
     setIsLoading(prev => ({ ...prev, explain: true }));
 
     try {
-      // Simulate backend API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const mockExplanation = `**AI Code Analysis**\n\nThis code segment implements smart contract functionality with the following characteristics:\n\n• State variable management\n• Event emission patterns\n• Access control considerations\n• Gas optimization opportunities\n\n*Note: This is a placeholder explanation.*`;
-      
-      setExplanations(prev => [{
+      // Simulate backend API call with structured response
+      const mockResponse = {
+        explanation: `**AI Code Analysis**\n\nThis code segment implements smart contract functionality with the following characteristics:\n\n• State variable management\n• Event emission patterns\n• Access control considerations\n• Gas optimization opportunities\n\n*Note: Connect to AI service for detailed analysis.*`,
+        startLine: 1,
+        endLine: 10,
+      };
+
+      const explanationWithRange: ExplanationWithRange = {
         id: `explain-${Date.now()}`,
-        explanation: mockExplanation,
-        range: { startLine: 1, endLine: 10 }
-      }, ...prev.slice(0, 2)]);
+        explanation: mockResponse.explanation,
+        range: {
+          startLine: mockResponse.startLine,
+          endLine: mockResponse.endLine
+        },
+      };
+
+      setExplanations(prev => [explanationWithRange, ...prev.slice(0, 2)]);
+      handleExplanationClick(explanationWithRange.range, explanationWithRange.id);
 
       toast({
         title: "Code explained",
-        description: "AI analysis complete"
+        description: "AI analysis complete with line highlighting"
       });
     } catch (error) {
+      console.error('Explanation error:', error);
       toast({
         title: "Error generating explanation",
-        description: "Please try again"
+        description: "Please try again or connect backend API"
       });
     } finally {
       setIsLoading(prev => ({ ...prev, explain: false }));
@@ -168,8 +205,28 @@ contract SimpleStorage {
     setIsLoading(prev => ({ ...prev, debug: true }));
 
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
+      // Backend API call - replace with actual endpoint
+      const response = await fetch('/api/debug', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: codeToDebug,
+          contractCode: contractCode,
+          language: 'solidity'
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to get debug suggestions');
+
+      const data = await response.json();
+      setDebugSuggestions(data.suggestions || 'Debug suggestions will appear here...');
+
+      toast({
+        title: "Debug analysis complete",
+        description: "AI suggestions generated"
+      });
+    } catch (error) {
+      console.error('Debug error:', error);
       setDebugSuggestions(`**Debug Suggestions**
 
 🔍 **Potential Issues Found:**
@@ -189,16 +246,11 @@ contract SimpleStorage {
 • Consider subnet-specific features
 • Review gas pricing on Fuji testnet
 
-*Note: This is a placeholder response.*`);
+*Note: This is a placeholder response. Connect to OpenZeppelin Defender API for detailed analysis.*`);
 
       toast({
-        title: "Debug analysis complete",
-        description: "AI suggestions generated"
-      });
-    } catch (error) {
-      toast({
-        title: "Debug analysis failed",
-        description: "Please try again"
+        title: "Using placeholder response",
+        description: "Connect backend API for real debug analysis"
       });
     } finally {
       setIsLoading(prev => ({ ...prev, debug: false }));
@@ -216,6 +268,7 @@ contract SimpleStorage {
       return;
     }
 
+    // Extract function name (simple regex - can be enhanced)
     const functionMatch = functionToSimulate.match(/function\s+(\w+)/);
     const functionName = functionMatch ? functionMatch[1] : 'unknown';
     setSelectedFunction(functionName);
@@ -223,8 +276,29 @@ contract SimpleStorage {
     setIsLoading(prev => ({ ...prev, simulate: true }));
 
     try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
+      // Backend API call for Avalanche Fuji simulation
+      const response = await fetch('/api/simulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          functionName,
+          contractCode,
+          arguments: [], // Will be enhanced with dynamic argument input
+          network: 'fuji-testnet'
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to simulate on Fuji');
+
+      const data = await response.json();
+      setSimulationOutput(data.output || 'Simulation results will appear here...');
+
+      toast({
+        title: "Simulation complete",
+        description: `Function ${functionName} executed on Fuji testnet`
+      });
+    } catch (error) {
+      console.error('Simulation error:', error);
       setSimulationOutput(`**Avalanche Fuji Testnet Simulation**
 
 🔗 **Network:** Fuji Testnet (Chain ID: 43113)
@@ -245,22 +319,18 @@ contract SimpleStorage {
 • Transaction Hash: 0x1234...abcd (placeholder)
 • Block Number: #8,523,891 (simulated)
 
-*Note: This is a placeholder simulation.*`);
+*Note: This is a placeholder response. Connect to Avalanche RPC for real simulation.*`);
 
       toast({
-        title: "Simulation complete",
-        description: `Function ${functionName} executed on Fuji testnet`
-      });
-    } catch (error) {
-      toast({
-        title: "Simulation failed",
-        description: "Please try again"
+        title: "Using placeholder simulation",
+        description: "Connect Avalanche RPC for real testnet interaction"
       });
     } finally {
       setIsLoading(prev => ({ ...prev, simulate: false }));
     }
   };
 
+  // Get selected text or current function context
   const getSelectedCodeOrFunction = () => {
     if (!editorRef.current) return '';
 
@@ -271,8 +341,42 @@ contract SimpleStorage {
       return selectedText;
     }
 
-    // Return some default code if nothing selected
-    return contractCode.split('\n').slice(0, 10).join('\n');
+    // If no selection, try to detect current function
+    const position = editorRef.current.getPosition();
+    const model = editorRef.current.getModel();
+    const lineCount = model.getLineCount();
+
+    // Simple function detection (can be enhanced)
+    let functionStart = position.lineNumber;
+    let functionEnd = position.lineNumber;
+
+    // Find function start
+    for (let i = position.lineNumber; i >= 1; i--) {
+      const line = model.getLineContent(i);
+      if (line.includes('function ')) {
+        functionStart = i;
+        break;
+      }
+    }
+
+    // Find function end
+    let braceCount = 0;
+    for (let i = functionStart; i <= lineCount; i++) {
+      const line = model.getLineContent(i);
+      braceCount += (line.match(/{/g) || []).length;
+      braceCount -= (line.match(/}/g) || []).length;
+      if (braceCount === 0 && i > functionStart) {
+        functionEnd = i;
+        break;
+      }
+    }
+
+    return model.getValueInRange({
+      startLineNumber: functionStart,
+      startColumn: 1,
+      endLineNumber: functionEnd,
+      endColumn: model.getLineMaxColumn(functionEnd)
+    });
   };
 
   return (
@@ -281,16 +385,13 @@ contract SimpleStorage {
       <div className="border-b border-gray-800 p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="h-8 w-8 bg-red-500 rounded-full flex items-center justify-center">
-              <Mountain className="h-4 w-4 text-white" />
-            </div>
+            <img src="/icons/AVAX_logo.png" alt="AVAX Icon" className="h-8 w-8" />
             <div>
               <h1 className="text-xl font-bold">Avalanche Smart Contract IDE</h1>
               <p className="text-sm text-gray-400">AI-Powered Debugging & Simulation</p>
             </div>
           </div>
           <div className="flex items-center space-x-2">
-            <ConnectWallet />
             <Badge variant="secondary" className="bg-red-500/20 text-red-400">
               Fuji Testnet
             </Badge>
@@ -388,7 +489,7 @@ contract SimpleStorage {
         {/* Right Panel - AI Analysis Tabs */}
         <div className="w-96 bg-gray-900">
           <Tabs defaultValue="explanation" className="h-full">
-            <TabsList className="grid w-full grid-cols-4 bg-gray-800">
+            <TabsList className="grid w-full grid-cols-3 bg-gray-800">
               <TabsTrigger value="explanation" className="text-xs">
                 AI Explain
               </TabsTrigger>
@@ -398,40 +499,54 @@ contract SimpleStorage {
               <TabsTrigger value="simulation" className="text-xs">
                 Simulate
               </TabsTrigger>
-              <TabsTrigger value="topup" className="text-xs">
-                Top Up
-              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="explanation" className="h-[calc(100%-40px)] p-0">
               <Card className="h-full bg-gray-900 border-gray-800">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base font-bold flex items-center text-white">
-                    <BookOpen className="h-4 w-4 mr-2 text-blue-400" />
-                    AI Explanations
+                  <CardTitle className="text-base font-bold flex items-center justify-between text-white">
+                    <div className="flex items-center">
+                      <BookOpen className="h-4 w-4 mr-2 text-blue-400" />
+                      Synchronized Explanations
+                    </div>
+                    {explanations.length > 0 && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          clearHighlights();
+                          setActiveExplanationId(null);
+                        }}
+                        className="text-xs text-gray-400 hover:text-white"
+                      >
+                        Clear Highlights
+                      </Button>
+                    )}
                   </CardTitle>
+                  <div className="text-xs text-gray-400">
+                    Click on code lines or explanations to highlight and navigate
+                  </div>
                 </CardHeader>
                 <Separator className="bg-gray-800" />
-                <CardContent className="p-4 h-[calc(100%-60px)] overflow-auto">
+                <CardContent className="p-4 h-[calc(100%-100px)] overflow-auto space-y-3">
                   {explanations.length > 0 ? (
-                    <div className="space-y-3">
-                      {explanations.map((exp) => (
-                        <div key={exp.id} className="bg-gray-800 rounded-lg p-3 text-sm">
-                          <div className="text-gray-300 whitespace-pre-wrap">
-                            {exp.explanation}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    explanations.map((exp) => (
+                      <ExplanationCard
+                        key={exp.id}
+                        explanation={exp}
+                        isActive={activeExplanationId === exp.id}
+                        onClick={(range) => handleExplanationClick(range, exp.id)}
+                      />
+                    ))
                   ) : (
                     <div className="text-sm text-gray-300">
                       <div className="mb-3">
                         <strong>💡 Getting Started:</strong>
                       </div>
                       <ul className="text-xs space-y-1 text-gray-400">
-                        <li>• Select code and click "Explain" for analysis</li>
-                        <li>• AI will provide detailed explanations</li>
-                        <li>• Explanations appear here with syntax highlighting</li>
+                        <li>• Click on any function to get contextual explanation</li>
+                        <li>• Select code and click "Explain" for detailed analysis</li>
+                        <li>• Explanations will highlight relevant code lines</li>
                       </ul>
                     </div>
                   )}
@@ -476,10 +591,6 @@ contract SimpleStorage {
                   </div>
                 </CardContent>
               </Card>
-            </TabsContent>
-
-            <TabsContent value="topup" className="h-[calc(100%-40px)] p-0">
-              <TopUp />
             </TabsContent>
           </Tabs>
         </div>
