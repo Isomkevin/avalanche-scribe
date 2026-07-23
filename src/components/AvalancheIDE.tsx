@@ -1,16 +1,23 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import Editor from '@monaco-editor/react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Play, Bug, BookOpen, Mountain, Code, Loader2 } from 'lucide-react';
+import { Play, Bug, BookOpen, Code, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useMonacoDecorations, ExplanationWithRange, CodeRange } from '@/hooks/useMonacoDecorations';
 import { parseSolidityFunctions, getExplanationForFunction } from '@/utils/solidityParser';
 import ExplanationCard from './ExplanationCard';
 import '../styles/monaco-highlights.css';
+import { chatCompletion, hasCredentials, loadSettings } from '@/lib/byok';
+import ConnectWallet from './ConnectWallet';
+import SettingsDialog from './SettingsDialog';
+import TopUp from './TopUp';
+import { useWallet } from '@/hooks/useWallet';
+import { FUJI, readOnlyProvider } from '@/lib/web3';
+import { formatUnits } from 'ethers';
 
 const AvalancheIDE = () => {
   const [contractCode, setContractCode] = useState(`// SPDX-License-Identifier: MIT
@@ -59,6 +66,7 @@ contract SimpleStorage {
     highlightAndScroll,
     clearHighlights
   } = useMonacoDecorations();
+  const { address, isFuji } = useWallet();
 
   // Monaco Editor setup with Solidity syntax highlighting
   const handleEditorDidMount = (editor: any, monaco: any) => {
@@ -154,23 +162,36 @@ contract SimpleStorage {
       return;
     }
 
+    const settings = loadSettings();
+    if (!hasCredentials(settings)) {
+      toast({
+        title: "Add your AI keys",
+        description: "Open Settings to configure a provider.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(prev => ({ ...prev, explain: true }));
 
     try {
-      // Simulate backend API call with structured response
-      const mockResponse = {
-        explanation: `**AI Code Analysis**\n\nThis code segment implements smart contract functionality with the following characteristics:\n\n• State variable management\n• Event emission patterns\n• Access control considerations\n• Gas optimization opportunities\n\n*Note: Connect to AI service for detailed analysis.*`,
-        startLine: 1,
-        endLine: 10,
-      };
+      const content = await chatCompletion(
+        [
+          {
+            role: 'system',
+            content:
+              'You are a senior Solidity auditor. Explain code clearly and concisely using markdown. Cover: purpose, state changes, control flow, and any risks. Keep it under 250 words.',
+          },
+          { role: 'user', content: `Explain this Solidity code:\n\n\`\`\`solidity\n${codeToExplain}\n\`\`\`` },
+        ],
+        settings
+      );
 
+      const range = getSelectionRange();
       const explanationWithRange: ExplanationWithRange = {
         id: `explain-${Date.now()}`,
-        explanation: mockResponse.explanation,
-        range: {
-          startLine: mockResponse.startLine,
-          endLine: mockResponse.endLine
-        },
+        explanation: content,
+        range,
       };
 
       setExplanations(prev => [explanationWithRange, ...prev.slice(0, 2)]);
@@ -178,13 +199,14 @@ contract SimpleStorage {
 
       toast({
         title: "Code explained",
-        description: "AI analysis complete with line highlighting"
+        description: `via ${settings.provider ?? 'AI'} · ${settings.model}`,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Explanation error:', error);
       toast({
         title: "Error generating explanation",
-        description: "Please try again or connect backend API"
+        description: error?.message ?? 'Unknown error',
+        variant: 'destructive',
       });
     } finally {
       setIsLoading(prev => ({ ...prev, explain: false }));
@@ -202,55 +224,46 @@ contract SimpleStorage {
       return;
     }
 
+    const settings = loadSettings();
+    if (!hasCredentials(settings)) {
+      toast({
+        title: "Add your AI keys",
+        description: "Open Settings to configure a provider.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(prev => ({ ...prev, debug: true }));
 
     try {
-      // Backend API call - replace with actual endpoint
-      const response = await fetch('/api/debug', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          code: codeToDebug,
-          contractCode: contractCode,
-          language: 'solidity'
-        })
-      });
-
-      if (!response.ok) throw new Error('Failed to get debug suggestions');
-
-      const data = await response.json();
-      setDebugSuggestions(data.suggestions || 'Debug suggestions will appear here...');
+      const content = await chatCompletion(
+        [
+          {
+            role: 'system',
+            content:
+              'You are a security-focused Solidity auditor. Analyze the provided code for: (1) vulnerabilities (reentrancy, integer issues, access control, oracle/timestamp, denial-of-service), (2) gas optimizations, (3) Avalanche C-Chain / Fuji-specific considerations. Group findings by Critical / High / Medium / Low / Info. Use concise markdown with bullet points.',
+          },
+          {
+            role: 'user',
+            content: `Analyze this Solidity code. Full contract for context is below the selection.\n\n### Selection\n\`\`\`solidity\n${codeToDebug}\n\`\`\`\n\n### Full contract\n\`\`\`solidity\n${contractCode}\n\`\`\``,
+          },
+        ],
+        settings,
+        { temperature: 0.1 }
+      );
+      setDebugSuggestions(content);
 
       toast({
         title: "Debug analysis complete",
-        description: "AI suggestions generated"
+        description: `via ${settings.provider ?? 'AI'} · ${settings.model}`,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Debug error:', error);
-      setDebugSuggestions(`**Debug Suggestions**
-
-🔍 **Potential Issues Found:**
-• Check for reentrancy vulnerabilities
-• Validate input parameters
-• Consider overflow/underflow protection
-• Review access control modifiers
-
-🛠️ **Recommendations:**
-• Use OpenZeppelin's SafeMath library
-• Add proper event emissions
-• Implement circuit breakers
-• Consider gas optimization
-
-⚡ **Avalanche-Specific:**
-• Optimize for C-Chain deployment
-• Consider subnet-specific features
-• Review gas pricing on Fuji testnet
-
-*Note: This is a placeholder response. Connect to OpenZeppelin Defender API for detailed analysis.*`);
-
       toast({
-        title: "Using placeholder response",
-        description: "Connect backend API for real debug analysis"
+        title: 'Debug failed',
+        description: error?.message ?? 'Unknown error',
+        variant: 'destructive',
       });
     } finally {
       setIsLoading(prev => ({ ...prev, debug: false }));
@@ -268,7 +281,6 @@ contract SimpleStorage {
       return;
     }
 
-    // Extract function name (simple regex - can be enhanced)
     const functionMatch = functionToSimulate.match(/function\s+(\w+)/);
     const functionName = functionMatch ? functionMatch[1] : 'unknown';
     setSelectedFunction(functionName);
@@ -276,58 +288,100 @@ contract SimpleStorage {
     setIsLoading(prev => ({ ...prev, simulate: true }));
 
     try {
-      // Backend API call for Avalanche Fuji simulation
-      const response = await fetch('/api/simulate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          functionName,
-          contractCode,
-          arguments: [], // Will be enhanced with dynamic argument input
-          network: 'fuji-testnet'
-        })
-      });
+      // Real Fuji chain state
+      const rpc = readOnlyProvider();
+      const [blockNumber, feeData, network] = await Promise.all([
+        rpc.getBlockNumber(),
+        rpc.getFeeData(),
+        rpc.getNetwork(),
+      ]);
+      let walletBalance = 'not connected';
+      if (address) {
+        try {
+          const bal = await rpc.getBalance(address);
+          walletBalance = `${formatUnits(bal, 18)} AVAX`;
+        } catch { /* ignore */ }
+      }
+      const gasPriceGwei = feeData.gasPrice ? formatUnits(feeData.gasPrice, 'gwei') : 'n/a';
 
-      if (!response.ok) throw new Error('Failed to simulate on Fuji');
+      // AI-driven static simulation reasoning
+      const settings = loadSettings();
+      let aiSection = '';
+      if (hasCredentials(settings)) {
+        try {
+          aiSection = await chatCompletion(
+            [
+              {
+                role: 'system',
+                content:
+                  'You are simulating a Solidity function on Avalanche Fuji testnet. Given the full contract and target function, predict: gas estimate range, state changes, events emitted, revert conditions, and likely output. Reply in concise markdown. Do NOT invent tx hashes.',
+              },
+              {
+                role: 'user',
+                content: `Function: \`${functionName}\`\n\nContract:\n\`\`\`solidity\n${contractCode}\n\`\`\``,
+              },
+            ],
+            settings,
+            { temperature: 0.1 }
+          );
+        } catch (err: any) {
+          aiSection = `_AI analysis unavailable: ${err?.message ?? 'error'}_`;
+        }
+      } else {
+        aiSection = '_Add your AI keys in Settings for a full behavioral simulation._';
+      }
 
-      const data = await response.json();
-      setSimulationOutput(data.output || 'Simulation results will appear here...');
+      setSimulationOutput(
+`**Avalanche Fuji Testnet — Live Chain State**
+
+🔗 Network: ${network.name || 'Fuji'} (chainId ${network.chainId})
+📦 Latest block: #${blockNumber.toLocaleString()}
+⛽ Gas price: ${gasPriceGwei} gwei
+👛 Wallet: ${address ?? 'not connected'} ${address && !isFuji ? '(wrong network)' : ''}
+💰 Balance: ${walletBalance}
+📝 Function: \`${functionName}\`
+⏱ Timestamp: ${new Date().toISOString()}
+
+---
+
+### AI Behavioral Simulation
+${aiSection}
+
+---
+_To submit a real transaction, deploy the contract to Fuji and interact via the deployed address._`
+      );
 
       toast({
         title: "Simulation complete",
-        description: `Function ${functionName} executed on Fuji testnet`
+        description: `Fuji block #${blockNumber} · gas ${gasPriceGwei} gwei`,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Simulation error:', error);
-      setSimulationOutput(`**Avalanche Fuji Testnet Simulation**
-
-🔗 **Network:** Fuji Testnet (Chain ID: 43113)
-📝 **Function:** ${functionName}
-⏱️ **Timestamp:** ${new Date().toISOString()}
-
-📊 **Simulation Results:**
-• Gas Estimate: ~45,000 gas
-• Execution Status: Success (simulated)
-• State Changes: Contract storage updated
-• Events Emitted: DataStored event
-
-💰 **Cost Analysis:**
-• Gas Price: 25 nAVAX (estimated)
-• Total Cost: ~0.001125 AVAX
-
-🌐 **Fuji Explorer:**
-• Transaction Hash: 0x1234...abcd (placeholder)
-• Block Number: #8,523,891 (simulated)
-
-*Note: This is a placeholder response. Connect to Avalanche RPC for real simulation.*`);
-
       toast({
-        title: "Using placeholder simulation",
-        description: "Connect Avalanche RPC for real testnet interaction"
+        title: 'Simulation failed',
+        description: error?.message ?? 'Unknown error',
+        variant: 'destructive',
       });
     } finally {
       setIsLoading(prev => ({ ...prev, simulate: false }));
     }
+  };
+
+  // Compute a CodeRange from the current editor selection, falling back to whole doc.
+  const getSelectionRange = (): CodeRange => {
+    const editor = editorRef.current as any;
+    if (!editor) return { startLine: 1, endLine: 1 };
+    const sel = editor.getSelection();
+    if (sel && (sel.startLineNumber !== sel.endLineNumber || sel.startColumn !== sel.endColumn)) {
+      return { startLine: sel.startLineNumber, endLine: sel.endLineNumber };
+    }
+    const model = editor.getModel();
+    if (!model) return { startLine: 1, endLine: 1 };
+    const line = editor.getPosition()?.lineNumber ?? 1;
+    // Try to detect enclosing function bounds via the parser.
+    const funcs = parseSolidityFunctions(contractCode);
+    const enclosing = funcs.find((f) => line >= f.range.startLine && line <= f.range.endLine);
+    return enclosing ? enclosing.range : { startLine: 1, endLine: model.getLineCount() };
   };
 
   // Get selected text or current function context
@@ -393,11 +447,10 @@ contract SimpleStorage {
           </div>
           <div className="flex items-center space-x-2">
             <Badge variant="secondary" className="bg-red-500/20 text-red-400">
-              Fuji Testnet
+              {FUJI.name}
             </Badge>
-            <Badge variant="outline" className="border-green-500/50 text-green-400">
-              Connected
-            </Badge>
+            <SettingsDialog />
+            <ConnectWallet />
           </div>
         </div>
       </div>
@@ -588,6 +641,9 @@ contract SimpleStorage {
                 <CardContent className="p-4 h-[calc(100%-60px)] overflow-auto">
                   <div className="text-sm text-gray-300 whitespace-pre-wrap">
                     {simulationOutput || 'Select a function and click "Simulate on Fuji" to test on Avalanche testnet.'}
+                  </div>
+                  <div className="mt-4">
+                    <TopUp />
                   </div>
                 </CardContent>
               </Card>

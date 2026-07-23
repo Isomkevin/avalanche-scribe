@@ -1,6 +1,6 @@
 // components/ContractToJson.tsx
 import { useEffect } from 'react';
-import axios from 'axios';
+import { chatCompletion, loadSettings, hasCredentials } from '@/lib/byok';
 
 interface ContractToJsonProps {
   contractCode: string;
@@ -29,6 +29,12 @@ const ContractToJson: React.FC<ContractToJsonProps> = ({
   useEffect(() => {
     const processContract = async () => {
       try {
+        const settings = loadSettings();
+        if (!hasCredentials(settings)) {
+          onError?.('AI provider not configured. Open Settings to add your API key.');
+          onParsed(null);
+          return;
+        }
         const prompt = `
 You are an expert Solidity code analyst.
 
@@ -49,25 +55,18 @@ ${contractCode}
 --- CONTRACT END ---
         `;
 
-        const response = await axios.post(
-          'https://azureai3111594496.openai.azure.com/openai/deployments/MeallensAI/chat/completions?api-version=2025-01-01-preview',
-          {
-            model: 'MeallensAI',
-            messages: [{ role: 'user', content: prompt }],
-            temperature: 0.2,
-          },
-          {
-            headers: {
-              'api-key': '7HDDKgz8kbcwyhrMVuB1uhlWGjRYusdLkMKWjmtBoWDKJ0slp7QlJQQJ99BCACHYHv6XJ3w3AAAAACOGeRlr',
-              'Content-Type': 'application/json',
-            },
-          }
+        const content = await chatCompletion(
+          [{ role: 'user', content: prompt }],
+          settings,
+          { temperature: 0.2 }
         );
 
-        let parsedJson = null;
+        // Strip common ```json fences if present.
+        const cleaned = content.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+        let parsedJson: any = null;
         try {
-          parsedJson = JSON.parse(response.data.choices[0].message.content);
-        } catch (parseErr) {
+          parsedJson = JSON.parse(cleaned);
+        } catch {
           if (onError) onError('Failed to parse AI response as JSON.');
           return;
         }
@@ -79,13 +78,7 @@ ${contractCode}
 
         onParsed(parsedJson);
       } catch (error: any) {
-        if (onError) {
-          onError(
-            error?.response?.data?.error?.message ||
-              error?.message ||
-              'Failed to process contract.'
-          );
-        }
+        onError?.(error?.message || 'Failed to process contract.');
         onParsed(null);
       }
     };
