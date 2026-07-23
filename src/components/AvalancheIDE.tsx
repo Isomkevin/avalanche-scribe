@@ -642,6 +642,9 @@ _To submit a real transaction, deploy the contract to Fuji and interact via the 
                   <div className="text-sm text-gray-300 whitespace-pre-wrap">
                     {simulationOutput || 'Select a function and click "Simulate on Fuji" to test on Avalanche testnet.'}
                   </div>
+                  <div className="mt-4">
+                    <TopUp />
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
