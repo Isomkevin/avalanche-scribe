@@ -1,14 +1,15 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import Editor from '@monaco-editor/react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Play, Bug, BookOpen, Code, Loader2 } from 'lucide-react';
+import { Play, Bug, BookOpen, Code, Loader2, FileDown, History as HistoryIcon, ArrowLeft } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { useMonacoDecorations, ExplanationWithRange, CodeRange } from '@/hooks/useMonacoDecorations';
-import { parseSolidityFunctions, getExplanationForFunction } from '@/utils/solidityParser';
+import { parseSolidityFunctions, getExplanationForFunction, defaultArgForType, type SolidityFunction } from '@/utils/solidityParser';
 import ExplanationCard from './ExplanationCard';
 import '../styles/monaco-highlights.css';
 import { chatCompletion, hasCredentials, loadSettings } from '@/lib/byok';
@@ -18,6 +19,10 @@ import TopUp from './TopUp';
 import { useWallet } from '@/hooks/useWallet';
 import { FUJI, readOnlyProvider } from '@/lib/web3';
 import { formatUnits } from 'ethers';
+import SimulatorArgs, { SimArgsState } from './SimulatorArgs';
+import HistoryPanel from './HistoryPanel';
+import { addHistory, HistoryEntry } from '@/lib/history';
+import { downloadReport } from '@/lib/pdfReport';
 
 const AvalancheIDE = () => {
   const [contractCode, setContractCode] = useState(`// SPDX-License-Identifier: MIT
@@ -53,6 +58,7 @@ contract SimpleStorage {
   const [explanations, setExplanations] = useState<ExplanationWithRange[]>([]);
   const [activeExplanationId, setActiveExplanationId] = useState<string | null>(null);
   const [selectedFunction, setSelectedFunction] = useState('');
+  const [simArgs, setSimArgs] = useState<SimArgsState | null>(null);
   const [isLoading, setIsLoading] = useState({
     explain: false,
     debug: false,
@@ -67,6 +73,21 @@ contract SimpleStorage {
     clearHighlights
   } = useMonacoDecorations();
   const { address, isFuji } = useWallet();
+
+  const buildSimArgsFromFn = (fn: SolidityFunction): SimArgsState => ({
+    functionName: fn.name,
+    signature: fn.signature,
+    stateMutability: fn.stateMutability,
+    params: fn.params,
+    values: fn.params.map((p) => defaultArgForType(p.type)),
+    valueAvax: '0',
+  });
+
+  const detectEnclosingFn = (lineNumber: number): SolidityFunction | undefined => {
+    return parseSolidityFunctions(contractCode).find(
+      (f) => lineNumber >= f.range.startLine && lineNumber <= f.range.endLine
+    );
+  };
 
   // Monaco Editor setup with Solidity syntax highlighting
   const handleEditorDidMount = (editor: any, monaco: any) => {
@@ -120,13 +141,23 @@ contract SimpleStorage {
         handleLineClick(position.lineNumber);
       }
     });
+
+    // Update simulator args whenever the cursor moves.
+    editor.onDidChangeCursorPosition((e: any) => {
+      const fn = detectEnclosingFn(e.position.lineNumber);
+      if (fn) {
+        setSimArgs((prev) =>
+          prev && prev.functionName === fn.name && prev.signature === fn.signature
+            ? prev
+            : buildSimArgsFromFn(fn)
+        );
+        setSelectedFunction(fn.name);
+      }
+    });
   };
 
   const handleLineClick = (lineNumber: number) => {
-    const functions = parseSolidityFunctions(contractCode);
-    const clickedFunction = functions.find(
-      func => lineNumber >= func.range.startLine && lineNumber <= func.range.endLine
-    );
+    const clickedFunction = detectEnclosingFn(lineNumber);
 
     if (clickedFunction) {
       const explanation = getExplanationForFunction(clickedFunction.name, contractCode);
@@ -138,6 +169,8 @@ contract SimpleStorage {
 
       setExplanations(prev => [explanationWithRange, ...prev.slice(0, 2)]); // Keep only 3 recent
       handleExplanationClick(clickedFunction.range, explanationWithRange.id);
+      setSimArgs(buildSimArgsFromFn(clickedFunction));
+      setSelectedFunction(clickedFunction.name);
 
       toast({
         title: "Contextual explanation generated",
@@ -197,6 +230,13 @@ contract SimpleStorage {
       setExplanations(prev => [explanationWithRange, ...prev.slice(0, 2)]);
       handleExplanationClick(explanationWithRange.range, explanationWithRange.id);
 
+      addHistory({
+        kind: 'explain',
+        title: `${selectedFunction || 'selection'} · lines ${range.startLine}-${range.endLine}`,
+        content,
+        code: codeToExplain,
+      });
+
       toast({
         title: "Code explained",
         description: `via ${settings.provider ?? 'AI'} · ${settings.model}`,
@@ -253,6 +293,12 @@ contract SimpleStorage {
         { temperature: 0.1 }
       );
       setDebugSuggestions(content);
+      addHistory({
+        kind: 'debug',
+        title: `${selectedFunction || 'debug'} · ${new Date().toLocaleTimeString()}`,
+        content,
+        code: codeToDebug,
+      });
 
       toast({
         title: "Debug analysis complete",
@@ -271,7 +317,29 @@ contract SimpleStorage {
   };
 
   const handleSimulate = async () => {
-    const functionToSimulate = getSelectedCodeOrFunction();
+    // Prefer the parsed args state — but fall back to selection detection.
+    let functionName = simArgs?.functionName || '';
+    let signatureLine = simArgs?.signature || '';
+    let functionToSimulate = '';
+    if (simArgs) {
+      const fn = parseSolidityFunctions(contractCode).find((f) => f.name === simArgs.functionName);
+      if (fn) {
+        const model = (editorRef.current as any)?.getModel?.();
+        functionToSimulate = model
+          ? model.getValueInRange({
+              startLineNumber: fn.range.startLine,
+              startColumn: 1,
+              endLineNumber: fn.range.endLine,
+              endColumn: model.getLineMaxColumn(fn.range.endLine),
+            })
+          : '';
+      }
+    }
+    if (!functionToSimulate) {
+      functionToSimulate = getSelectedCodeOrFunction();
+      const m = functionToSimulate.match(/function\s+(\w+)/);
+      if (m) functionName = m[1];
+    }
     if (!functionToSimulate.trim()) {
       toast({
         title: "No function selected",
@@ -280,9 +348,7 @@ contract SimpleStorage {
       });
       return;
     }
-
-    const functionMatch = functionToSimulate.match(/function\s+(\w+)/);
-    const functionName = functionMatch ? functionMatch[1] : 'unknown';
+    if (!functionName) functionName = 'unknown';
     setSelectedFunction(functionName);
 
     setIsLoading(prev => ({ ...prev, simulate: true }));
@@ -307,6 +373,12 @@ contract SimpleStorage {
       // AI-driven static simulation reasoning
       const settings = loadSettings();
       let aiSection = '';
+      const argsText = simArgs && simArgs.params.length
+        ? simArgs.params.map((p, i) => `${p.name} (${p.type}) = ${simArgs.values[i] || '∅'}`).join('\n')
+        : '(no arguments)';
+      const valueLine = simArgs?.stateMutability === 'payable'
+        ? `\nmsg.value: ${simArgs.valueAvax || '0'} AVAX`
+        : '';
       if (hasCredentials(settings)) {
         try {
           aiSection = await chatCompletion(
@@ -318,7 +390,7 @@ contract SimpleStorage {
               },
               {
                 role: 'user',
-                content: `Function: \`${functionName}\`\n\nContract:\n\`\`\`solidity\n${contractCode}\n\`\`\``,
+                content: `Function: \`${functionName}\`\n\nCaller-supplied arguments:\n${argsText}${valueLine}\n\nContract:\n\`\`\`solidity\n${contractCode}\n\`\`\``,
               },
             ],
             settings,
@@ -340,6 +412,8 @@ contract SimpleStorage {
 👛 Wallet: ${address ?? 'not connected'} ${address && !isFuji ? '(wrong network)' : ''}
 💰 Balance: ${walletBalance}
 📝 Function: \`${functionName}\`
+📥 Args:
+${argsText}${valueLine}
 ⏱ Timestamp: ${new Date().toISOString()}
 
 ---
@@ -350,6 +424,13 @@ ${aiSection}
 ---
 _To submit a real transaction, deploy the contract to Fuji and interact via the deployed address._`
       );
+
+      addHistory({
+        kind: 'simulate',
+        title: `${functionName} · block ${blockNumber}`,
+        content: `Function ${functionName}\nBlock #${blockNumber}\nGas ${gasPriceGwei} gwei\n\nArgs:\n${argsText}${valueLine}\n\n${aiSection}`,
+        code: functionToSimulate,
+      });
 
       toast({
         title: "Simulation complete",
@@ -365,6 +446,33 @@ _To submit a real transaction, deploy the contract to Fuji and interact via the 
     } finally {
       setIsLoading(prev => ({ ...prev, simulate: false }));
     }
+  };
+
+  const handleReopenHistory = (entry: HistoryEntry) => {
+    if (entry.kind === 'explain') {
+      const range = { startLine: 1, endLine: 1 };
+      setExplanations((prev) => [{ id: `hist-${entry.id}`, explanation: entry.content, range }, ...prev.slice(0, 2)]);
+      setActiveExplanationId(`hist-${entry.id}`);
+    } else if (entry.kind === 'debug') {
+      setDebugSuggestions(entry.content);
+    } else {
+      setSimulationOutput(entry.content);
+    }
+    toast({ title: 'Re-opened from history', description: entry.title });
+  };
+
+  const handleExportPdf = () => {
+    downloadReport({
+      functionName: simArgs?.functionName || selectedFunction || undefined,
+      functionSignature: simArgs?.signature,
+      contractCode,
+      explainText: explanations[0]?.explanation,
+      debugText: debugSuggestions,
+      simulationText: simulationOutput,
+      wallet: address,
+      network: FUJI.name,
+    });
+    toast({ title: 'PDF exported', description: 'Report saved to your downloads.' });
   };
 
   // Compute a CodeRange from the current editor selection, falling back to whole doc.
@@ -439,6 +547,9 @@ _To submit a real transaction, deploy the contract to Fuji and interact via the 
       <div className="border-b border-gray-800 p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
+            <Link to="/" className="text-gray-400 hover:text-white" title="Back to landing">
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
             <img src="/icons/AVAX_logo.png" alt="AVAX Icon" className="h-8 w-8" />
             <div>
               <h1 className="text-xl font-bold">Avalanche Smart Contract IDE</h1>
@@ -449,6 +560,16 @@ _To submit a real transaction, deploy the contract to Fuji and interact via the 
             <Badge variant="secondary" className="bg-red-500/20 text-red-400">
               {FUJI.name}
             </Badge>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleExportPdf}
+              className="border-purple-500/50 text-purple-300 hover:bg-purple-500/10"
+              title="Export PDF report"
+            >
+              <FileDown className="h-3 w-3 mr-1" />
+              Export PDF
+            </Button>
             <SettingsDialog />
             <ConnectWallet />
           </div>
@@ -542,7 +663,7 @@ _To submit a real transaction, deploy the contract to Fuji and interact via the 
         {/* Right Panel - AI Analysis Tabs */}
         <div className="w-96 bg-gray-900">
           <Tabs defaultValue="explanation" className="h-full">
-            <TabsList className="grid w-full grid-cols-3 bg-gray-800">
+            <TabsList className="grid w-full grid-cols-4 bg-gray-800">
               <TabsTrigger value="explanation" className="text-xs">
                 AI Explain
               </TabsTrigger>
@@ -551,6 +672,10 @@ _To submit a real transaction, deploy the contract to Fuji and interact via the 
               </TabsTrigger>
               <TabsTrigger value="simulation" className="text-xs">
                 Simulate
+              </TabsTrigger>
+              <TabsTrigger value="history" className="text-xs">
+                <HistoryIcon className="h-3 w-3 mr-1" />
+                History
               </TabsTrigger>
             </TabsList>
 
@@ -639,6 +764,9 @@ _To submit a real transaction, deploy the contract to Fuji and interact via the 
                 </CardHeader>
                 <Separator className="bg-gray-800" />
                 <CardContent className="p-4 h-[calc(100%-60px)] overflow-auto">
+                  <div className="mb-3">
+                    <SimulatorArgs state={simArgs} onChange={setSimArgs} />
+                  </div>
                   <div className="text-sm text-gray-300 whitespace-pre-wrap">
                     {simulationOutput || 'Select a function and click "Simulate on Fuji" to test on Avalanche testnet.'}
                   </div>
@@ -646,6 +774,24 @@ _To submit a real transaction, deploy the contract to Fuji and interact via the 
                     <TopUp />
                   </div>
                 </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="history" className="h-[calc(100%-40px)] p-0">
+              <Card className="h-full bg-gray-900 border-gray-800">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base font-bold flex items-center text-white">
+                    <HistoryIcon className="h-4 w-4 mr-2 text-cyan-300" />
+                    Local History
+                  </CardTitle>
+                  <div className="text-xs text-gray-400">
+                    Every Explain, Debug and Simulate result is saved locally. Search or re-open.
+                  </div>
+                </CardHeader>
+                <Separator className="bg-gray-800" />
+                <div className="h-[calc(100%-90px)]">
+                  <HistoryPanel onReopen={handleReopenHistory} />
+                </div>
               </Card>
             </TabsContent>
           </Tabs>

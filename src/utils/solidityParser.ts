@@ -5,6 +5,65 @@ export interface SolidityFunction {
   name: string;
   range: CodeRange;
   signature: string;
+  params: SolidityParam[];
+  stateMutability: 'pure' | 'view' | 'payable' | 'nonpayable';
+  isConstructor?: boolean;
+}
+
+export interface SolidityParam {
+  name: string;
+  type: string;
+}
+
+const STATE_MUTABILITIES = ['pure', 'view', 'payable'] as const;
+
+export function parseFunctionSignature(header: string): {
+  name: string;
+  params: SolidityParam[];
+  stateMutability: 'pure' | 'view' | 'payable' | 'nonpayable';
+  isConstructor: boolean;
+} | null {
+  const constructorMatch = header.match(/constructor\s*\(([^)]*)\)/);
+  if (constructorMatch) {
+    return {
+      name: 'constructor',
+      params: parseParams(constructorMatch[1]),
+      stateMutability: /payable/.test(header) ? 'payable' : 'nonpayable',
+      isConstructor: true,
+    };
+  }
+  const m = header.match(/function\s+(\w+)\s*\(([^)]*)\)([^{;]*)/);
+  if (!m) return null;
+  const [, name, paramsRaw, tail] = m;
+  const mutability =
+    STATE_MUTABILITIES.find((s) => new RegExp(`\\b${s}\\b`).test(tail)) ?? 'nonpayable';
+  return {
+    name,
+    params: parseParams(paramsRaw),
+    stateMutability: mutability,
+    isConstructor: false,
+  };
+}
+
+function parseParams(raw: string): SolidityParam[] {
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+  return trimmed.split(',').map((p, i) => {
+    const parts = p.trim().split(/\s+/).filter((x) => !['memory', 'calldata', 'storage', 'indexed'].includes(x));
+    const type = parts[0] ?? 'unknown';
+    const name = parts[parts.length - 1] && parts.length > 1 ? parts[parts.length - 1] : `arg${i}`;
+    return { type, name };
+  });
+}
+
+export function defaultArgForType(type: string): string {
+  if (/^u?int/.test(type)) return '0';
+  if (type === 'bool') return 'false';
+  if (type === 'address') return '0x0000000000000000000000000000000000000000';
+  if (type.startsWith('bytes')) return '0x';
+  if (type === 'string') return '';
+  if (type.endsWith('[]')) return '[]';
+  return '';
 }
 
 export const parseSolidityFunctions = (code: string): SolidityFunction[] => {
@@ -13,11 +72,11 @@ export const parseSolidityFunctions = (code: string): SolidityFunction[] => {
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
-    
-    // Match function declarations (simplified regex)
-    const functionMatch = line.match(/function\s+(\w+)\s*\([^)]*\)/);
-    if (functionMatch) {
-      const functionName = functionMatch[1];
+
+    // Look at a small window so we can capture headers that span lines.
+    const headerCandidate = lines.slice(i, Math.min(i + 4, lines.length)).join(' ');
+    const parsed = parseFunctionSignature(headerCandidate);
+    if (parsed && (line.startsWith('function ') || line.startsWith('constructor'))) {
       const startLine = i + 1;
       
       // Find the end of the function by counting braces
@@ -43,9 +102,12 @@ export const parseSolidityFunctions = (code: string): SolidityFunction[] => {
       }
       
       functions.push({
-        name: functionName,
+        name: parsed.name,
         range: { startLine, endLine },
-        signature: functionMatch[0],
+        signature: headerCandidate.match(/(function[^\{;]*|constructor[^\{;]*)/)?.[0]?.trim() ?? parsed.name,
+        params: parsed.params,
+        stateMutability: parsed.stateMutability,
+        isConstructor: parsed.isConstructor,
       });
     }
   }

@@ -28,6 +28,7 @@ import {
 } from "@/lib/byok";
 import { setAiCreditsAddress, getAiCreditsAddress } from "@/lib/web3";
 import { useToast } from "@/hooks/use-toast";
+import DeployWizard from "./DeployWizard";
 
 export default function SettingsDialog() {
   const [open, setOpen] = useState(false);
@@ -170,6 +171,9 @@ export default function SettingsDialog() {
               placeholder="0x… (leave blank if not deployed yet)"
               className="bg-gray-800 border-gray-700 font-mono text-xs"
             />
+            <div className="pt-1">
+              <DeployWizard onDeployed={(addr) => setContractAddr(addr)} />
+            </div>
           </div>
 
           {testResult && (
